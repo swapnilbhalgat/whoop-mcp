@@ -88,11 +88,12 @@ WHOOP_REDIRECT_URI=http://127.0.0.1:3000/callback
 STORAGE=redis UPSTASH_REDIS_REST_URL=... UPSTASH_REDIS_REST_TOKEN=... npm run auth
 ```
 
-**2. Deploy the HTTP server.** It's a standard long-running Node process (`npm run build && node dist/bin/http.js`) — deploy to any always-on host (Railway / Render / Fly). It exposes `POST /mcp` and `GET /health`.
+**2. Deploy.** Two supported targets, same code:
 
-> Vercel note: the included server is a long-running process, which suits an always-on container. To run on Vercel's *serverless* functions instead, wrap `buildServer()` (in `src/mcp/server.ts`) with [`@vercel/mcp-adapter`](https://vercel.com/docs/mcp), pass it your `UPSTASH_REDIS_REST_URL`, and reuse the same bearer check. The storage layer is already Vercel-ready.
+- **Vercel (serverless):** `api/mcp.ts` is a ready [`@vercel/mcp-adapter`](https://vercel.com/docs/mcp) function (route `POST /api/mcp`). Run `vercel --prod`, set the env vars above in the Vercel project, and you're done. Requires `STORAGE=redis`.
+- **Always-on container (Railway / Render / Fly):** a standard long-running process — `npm run build && node dist/bin/http.js`, exposing `POST /mcp` and `GET /health`. No adapter needed; works with file *or* redis storage.
 
-**3. Add it to Claude** as a custom connector: Settings → Connectors → Add custom connector → URL `https://your-host/mcp`, API key = your `MCP_BEARER_KEY`. Works across claude.ai web, mobile, and desktop, and is available to scheduled [Routines](https://code.claude.com/docs/en/routines).
+**3. Add it to Claude** as a custom connector: Settings → Connectors → Add custom connector → URL `https://your-host/api/mcp` (Vercel) or `https://your-host/mcp` (container), API key = your `MCP_BEARER_KEY`. Works across claude.ai web, mobile, and desktop, and is available to scheduled [Routines](https://code.claude.com/docs/en/routines).
 
 ## Test locally without Claude
 
