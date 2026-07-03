@@ -6,3 +6,5 @@ dist/
 tokens.json
 .whoop-mcp/
 .DS_Store
+.vercel
+.env*
