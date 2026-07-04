@@ -19,14 +19,14 @@ Bring your own WHOOP developer app (client id + secret). Your tokens live in sto
 ## Architecture
 
 ```
-Claude ──bearer key──▶ whoop-mcp ──OAuth (your client id/secret + token)──▶ WHOOP v2 API
-                          │
-                          └── token store: file (local) | Redis (remote)
+Claude ──OAuth 2.1 (PKCE+DCR)──▶ whoop-mcp ──OAuth (your client id/secret + token)──▶ WHOOP v2 API
+                                    │
+                                    └── token store: file (local) | Redis (remote)
 ```
 
 Two auth boundaries, kept separate:
 
-- **Claude → your server**: a bearer key you set (`MCP_BEARER_KEY`), also pasted into Claude's connector config.
+- **Claude → your server**: **OAuth 2.1** (PKCE + Dynamic Client Registration). This server *is* its own OAuth authorization server — claude.ai custom connectors only speak OAuth, not static bearer tokens. Access is gated by a single login password (`MCP_LOGIN_PASSWORD`, or `MCP_BEARER_KEY`) you enter once on the consent page; issued tokens live in your Redis.
 - **Your server → WHOOP**: your app's client id/secret + a stored, auto-rotating refresh token. **Claude never sees your WHOOP credentials.**
 
 ### Refresh tokens are single-use
@@ -76,33 +76,34 @@ This is the deploy that satisfies "available everywhere + automated". Set these 
 STORAGE=redis
 UPSTASH_REDIS_REST_URL=...
 UPSTASH_REDIS_REST_TOKEN=...
-MCP_BEARER_KEY=<long random string>
+PUBLIC_BASE_URL=https://your-app.vercel.app   # the OAuth issuer = your public URL
+MCP_BEARER_KEY=<long random string>           # doubles as the consent-page login
 WHOOP_CLIENT_ID=...
 WHOOP_CLIENT_SECRET=...
 WHOOP_REDIRECT_URI=http://127.0.0.1:3000/callback
 ```
 
-**1. Seed the token chain into Redis** (run locally once, pointing at the same Upstash):
+**1. Seed the WHOOP token chain into Redis** (run locally once, pointing at the same Upstash):
 
 ```bash
 STORAGE=redis UPSTASH_REDIS_REST_URL=... UPSTASH_REDIS_REST_TOKEN=... npm run auth
 ```
 
-**2. Deploy.** Two supported targets, same code:
+**2. Deploy.** Two supported targets, same code (same Express app):
 
-- **Vercel (serverless):** `api/mcp.ts` is a ready [`@vercel/mcp-adapter`](https://vercel.com/docs/mcp) function (route `POST /api/mcp`). Run `vercel --prod`, set the env vars above in the Vercel project, and you're done. Requires `STORAGE=redis`.
-- **Always-on container (Railway / Render / Fly):** a standard long-running process — `npm run build && node dist/bin/http.js`, exposing `POST /mcp` and `GET /health`. No adapter needed; works with file *or* redis storage.
+- **Vercel (serverless):** `api/index.ts` exports the app; `vercel.json` rewrites the root OAuth paths (`/authorize`, `/token`, `/register`, `/.well-known/*`) and `/mcp` to it. Run `vercel --prod`, set the env vars above (including `PUBLIC_BASE_URL`) in the project. Requires `STORAGE=redis`.
+- **Always-on container (Railway / Render / Fly):** `npm run build && node dist/bin/http.js`, exposing the same routes on `PORT`. Works with file *or* redis storage.
 
-**3. Add it to Claude** as a custom connector: Settings → Connectors → Add custom connector → URL `https://your-host/api/mcp` (Vercel) or `https://your-host/mcp` (container), API key = your `MCP_BEARER_KEY`. Works across claude.ai web, mobile, and desktop, and is available to scheduled [Routines](https://code.claude.com/docs/en/routines).
+**3. Add it to Claude** as a custom connector: Settings → Connectors → Add custom connector → **URL only** = `https://your-host/mcp`. Leave the OAuth client ID/secret blank — the server supports Dynamic Client Registration. When you connect, Claude opens the server's consent page; **enter your login password** (`MCP_LOGIN_PASSWORD` / `MCP_BEARER_KEY`) once and approve. Works across claude.ai web, mobile, and desktop, and is available to scheduled [Routines](https://code.claude.com/docs/en/routines).
 
 ## Test locally without Claude
 
 ```bash
-npm run start:http      # in one shell (needs MCP_BEARER_KEY set)
+PUBLIC_BASE_URL=http://localhost:3000 npm run start:http   # needs Redis + WHOOP env set
+curl -s localhost:3000/.well-known/oauth-authorization-server
 curl -s localhost:3000/health
-curl -s localhost:3000/mcp -H "Authorization: Bearer $MCP_BEARER_KEY" \
-  -H 'Content-Type: application/json' \
-  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+# POST /mcp now requires an OAuth access token (401 without one) — walk the flow
+# via /register -> /authorize -> /token, or just connect it in Claude.
 ```
 
 ## Open-source / share it
@@ -112,8 +113,8 @@ This is a **single-tenant template**: each person clones it, registers their own
 ## Security notes
 
 - Never commit `.env` or `tokens.json` (both are gitignored).
-- Treat `MCP_BEARER_KEY` like a password; rotate it by updating the env var and the Claude connector.
-- If you lose the stored refresh token, just re-run `npm run auth`.
+- Treat `MCP_LOGIN_PASSWORD` / `MCP_BEARER_KEY` like a password — it's the single-user login to the consent page. Rotate by updating the env var; existing OAuth tokens in Redis keep working until they expire (or clear the `oauth:*` keys to force re-auth).
+- If you lose the stored WHOOP refresh token, just re-run `npm run auth`.
 
 ## License
 

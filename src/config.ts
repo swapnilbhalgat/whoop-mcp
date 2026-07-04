@@ -31,12 +31,38 @@ export const config = {
     bearerKey: process.env.MCP_BEARER_KEY ?? "",
   },
 
+  // OAuth 2.1 authorization server config. This server issues its own tokens to
+  // Claude (claude.ai custom connectors only speak OAuth, not static bearers).
+  oauth: {
+    // Public https base URL of this deployment — the OAuth issuer identifier.
+    // e.g. https://whoop-mcp-blush.vercel.app  (no trailing slash, no path).
+    publicUrl: (process.env.PUBLIC_BASE_URL ?? "").replace(/\/+$/, ""),
+    // Single-user login that gates /authorize. Defaults to MCP_BEARER_KEY so you
+    // don't need a second secret; set MCP_LOGIN_PASSWORD for something memorable.
+    password: process.env.MCP_LOGIN_PASSWORD ?? process.env.MCP_BEARER_KEY ?? "",
+    accessTtlSec: Number(process.env.OAUTH_ACCESS_TTL ?? 3600), // 1 hour
+    refreshTtlSec: Number(process.env.OAUTH_REFRESH_TTL ?? 60 * 24 * 3600), // 60 days
+  },
+
   /** Throw early with a clear message if the WHOOP app creds are missing. */
   requireWhoop(): void {
     if (!config.whoop.clientId || !config.whoop.clientSecret) {
       throw new Error(
         "Missing WHOOP_CLIENT_ID / WHOOP_CLIENT_SECRET. Create an app at https://developer.whoop.com and set them in .env",
       );
+    }
+  },
+
+  /** Guard the OAuth server prerequisites (public URL, login, shared storage). */
+  requireOAuth(): void {
+    if (!config.oauth.publicUrl) {
+      throw new Error("Missing PUBLIC_BASE_URL — set it to this deploy's https URL (the OAuth issuer).");
+    }
+    if (!config.oauth.password) {
+      throw new Error("Missing MCP_LOGIN_PASSWORD (or MCP_BEARER_KEY) — used as the single-user login for /authorize.");
+    }
+    if (config.storage !== "redis" || !config.redisUrl || !config.redisToken) {
+      throw new Error("OAuth server requires STORAGE=redis with UPSTASH_REDIS_REST_URL/TOKEN (tokens must live in shared storage).");
     }
   },
 };
