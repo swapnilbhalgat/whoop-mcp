@@ -27,8 +27,6 @@ export const config = {
 
   http: {
     port: Number(process.env.PORT ?? 3000),
-    // Gates Claude -> your server. Required when running the HTTP transport.
-    bearerKey: process.env.MCP_BEARER_KEY ?? "",
   },
 
   // OAuth 2.1 authorization server config. This server issues its own tokens to
@@ -37,9 +35,8 @@ export const config = {
     // Public https base URL of this deployment — the OAuth issuer identifier.
     // e.g. https://whoop-mcp-blush.vercel.app  (no trailing slash, no path).
     publicUrl: (process.env.PUBLIC_BASE_URL ?? "").replace(/\/+$/, ""),
-    // Single-user login that gates /authorize. Defaults to MCP_BEARER_KEY so you
-    // don't need a second secret; set MCP_LOGIN_PASSWORD for something memorable.
-    password: process.env.MCP_LOGIN_PASSWORD ?? process.env.MCP_BEARER_KEY ?? "",
+    // Single-user login that gates the consent page (/authorize).
+    password: process.env.MCP_LOGIN_PASSWORD ?? "",
     accessTtlSec: Number(process.env.OAUTH_ACCESS_TTL ?? 3600), // 1 hour
     refreshTtlSec: Number(process.env.OAUTH_REFRESH_TTL ?? 60 * 24 * 3600), // 60 days
   },
@@ -59,7 +56,7 @@ export const config = {
       throw new Error("Missing PUBLIC_BASE_URL — set it to this deploy's https URL (the OAuth issuer).");
     }
     if (!config.oauth.password) {
-      throw new Error("Missing MCP_LOGIN_PASSWORD (or MCP_BEARER_KEY) — used as the single-user login for /authorize.");
+      throw new Error("Missing MCP_LOGIN_PASSWORD — the single-user login for the OAuth consent page (/authorize).");
     }
     if (config.storage !== "redis" || !config.redisUrl || !config.redisToken) {
       throw new Error("OAuth server requires STORAGE=redis with UPSTASH_REDIS_REST_URL/TOKEN (tokens must live in shared storage).");
