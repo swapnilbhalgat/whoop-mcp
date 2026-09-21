@@ -13,6 +13,24 @@ interface TokenResponse {
 /** How long before actual expiry we proactively refresh. */
 const REFRESH_SKEW_MS = 60_000;
 
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * WHOOP's v2 API answers **404** (not 400) when `start`/`end` are date-only
+ * strings like "2026-09-08" — it requires a full ISO 8601 instant. Plain dates
+ * used to be accepted, so this is a WHOOP-side breaking change; callers (and
+ * LLMs reading the tool schema) naturally pass plain dates. Widen them here:
+ * `start` to the beginning of that UTC day, `end` to its final millisecond, so
+ * a date range stays inclusive of both endpoints.
+ */
+function normalizeParam(key: string, value: string | number): string {
+  const s = String(value);
+  if ((key === "start" || key === "end") && DATE_ONLY.test(s)) {
+    return key === "start" ? `${s}T00:00:00.000Z` : `${s}T23:59:59.999Z`;
+  }
+  return s;
+}
+
 /**
  * Thin WHOOP v2 client. Owns the OAuth lifecycle:
  *  - exchangeCode (one-time, via the auth CLI)
@@ -62,7 +80,7 @@ export class WhoopClient {
   ): Promise<T> {
     const url = new URL(WHOOP_API_BASE + path);
     for (const [k, v] of Object.entries(query ?? {})) {
-      if (v !== undefined) url.searchParams.set(k, String(v));
+      if (v !== undefined) url.searchParams.set(k, normalizeParam(k, v));
     }
 
     let res = await fetch(url, { headers: { Authorization: `Bearer ${await this.getAccessToken()}` } });

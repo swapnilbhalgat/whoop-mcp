@@ -45,8 +45,17 @@ export class RedisOAuthProvider implements OAuthServerProvider {
   private readonly redis = getRedis();
 
   readonly clientsStore: OAuthRegisteredClientsStore = {
-    getClient: async (clientId) =>
-      (await this.redis.get<OAuthClientInformationFull>(CLIENT(clientId))) ?? undefined,
+    getClient: async (clientId) => {
+      const client = await this.redis.get<OAuthClientInformationFull>(CLIENT(clientId));
+      if (!client) return undefined;
+      // Sliding expiration. The registration previously carried a fixed TTL set
+      // once at registration time, so a connector in daily use still had its
+      // client record vanish 60 days later — while the refresh token bound to it
+      // was still valid — breaking the connection until re-registration. Renew
+      // on every use: abandoned clients still expire, active ones never do.
+      await this.redis.expire(CLIENT(clientId), config.oauth.refreshTtlSec);
+      return client;
+    },
     // Dynamic Client Registration: the SDK generates client_id/secret (its type
     // omits client_id since generation is configurable), we persist and return.
     registerClient: async (client) => {

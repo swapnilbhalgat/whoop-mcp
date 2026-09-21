@@ -7,8 +7,14 @@ import { V2 } from "../whoop/endpoints.js";
 // of records to return; the client auto-paginates WHOOP's 25-per-page cursor
 // under the hood, up to this many.
 const rangeShape = {
-  start: z.string().optional().describe("ISO 8601 start, e.g. 2026-06-01T00:00:00Z"),
-  end: z.string().optional().describe("ISO 8601 end, e.g. 2026-06-28T00:00:00Z"),
+  start: z
+    .string()
+    .optional()
+    .describe("ISO 8601 start, e.g. 2026-06-01T00:00:00Z. A plain date (2026-06-01) is widened to that UTC day's start."),
+  end: z
+    .string()
+    .optional()
+    .describe("ISO 8601 end, e.g. 2026-06-28T00:00:00Z. A plain date (2026-06-28) is widened to that UTC day's end, so the range includes it."),
   limit: z
     .number()
     .int()
